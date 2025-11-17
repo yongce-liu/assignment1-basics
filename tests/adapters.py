@@ -452,7 +452,9 @@ def run_cross_entropy(
     raise NotImplementedError
 
 
-def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
+def run_gradient_clipping(
+    parameters: Iterable[torch.nn.Parameter], max_l2_norm: float
+) -> None:
     """Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
 
     Args:
@@ -589,4 +591,24 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    from cs336_basics.bpe import get_byte_tokens, get_byte_pairs_with_merge
+
+    assert vocab_size >= 256 + len(
+        special_tokens
+    ), "vocab_size must be greater than 256+len(special_tokens)"
+    vocab = {i: bytes([i]) for i in range(256)}
+    merges = []
+    for i, tok in enumerate(special_tokens):
+        vocab[256 + i] = tok.encode("utf-8")
+    byte_tokens = get_byte_tokens(
+        path=input_path,
+        num_processes=24,
+        spilit_key=b"<|endoftext|>",
+        special_tokens=special_tokens,
+    )
+    best_pair = None
+    while len(vocab) < vocab_size:
+        byte_tokens, best_pair = get_byte_pairs_with_merge(byte_tokens, best_pair)
+        merges.append(best_pair)
+        vocab[len(vocab)] = best_pair[0] + best_pair[1]
+    return vocab, merges
