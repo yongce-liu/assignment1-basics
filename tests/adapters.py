@@ -602,7 +602,7 @@ def run_train_bpe(
         vocab[256 + i] = tok.encode("utf-8")
     words_count = pre_tokenization(
         path=input_path,
-        num_processes=24,
+        num_processes=1,
         split_key=b"<|endoftext|>",
         special_tokens=special_tokens,
     )
