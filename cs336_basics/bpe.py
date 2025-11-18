@@ -66,6 +66,9 @@ def example():
 PAT_GPT = re.compile(
     rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 )
+# PAT_GPT = re.compile(
+#     rb"""\S+"""
+# )
 
 
 def _process_get_words_count(args) -> dict[tuple[bytes], int]:
@@ -147,11 +150,23 @@ if __name__ == "__main__":
     from pathlib import Path
 
     words_count = pre_tokenization(
-        Path(__file__).parent / "../data/TinyStoriesV2-GPT4-valid.txt",
+        # Path(__file__).parent / "../data/TinyStoriesV2-GPT4-valid.txt",
+        # "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/corpus.en",
+        "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt",
         24,
         b"<|endoftext|>",
         ["<|endoftext|>"],
     )
-    pairs_count: Counter = get_pairs_count(words_count)
-    best_pair = pairs_count.most_common(1)[0][0]
-    res = merge_pair(words_count, best_pair)
+    merges = []
+    vocab = {}
+    for i in range(1):
+        # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
+        pairs_count = get_pairs_count(words_count)
+        best_pair = max(
+            pairs_count.items(), key=lambda item: (item[1], item[0])  # (count, pair)
+        )[0]
+        words_count = merge_pair(words_count, best_pair)
+        merges.append(best_pair)
+        # vocab[len(vocab)] = best_pair[0] + best_pair[1]
+
+# %%

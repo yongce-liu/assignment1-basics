@@ -609,8 +609,10 @@ def run_train_bpe(
     while len(vocab) < vocab_size:
         # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
         pairs_count = get_pairs_count(words_count)
-        best_pair = max(pairs_count, key=pairs_count.get)
+        best_pair = max(
+            pairs_count.items(), key=lambda item: (item[1], item[0])  # (count, pair)
+        )[0]
         words_count = merge_pair(words_count, best_pair)
         merges.append(best_pair)
-        vocab[len(vocab)] = (best_pair[0] + best_pair[1])
+        vocab[len(vocab)] = best_pair[0] + best_pair[1]
     return vocab, merges
