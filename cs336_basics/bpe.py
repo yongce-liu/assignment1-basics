@@ -147,11 +147,11 @@ def merge_pair(words: dict[tuple[bytes, ...], int], merge: tuple[bytes, bytes]):
 
 
 # %%
-if __name__ == "__main__":
+def main():
     from pathlib import Path
 
     words_count = pre_tokenization(
-        # Path(__file__).parent / "../data/TinyStoriesV2-GPT4-valid.txt",
+        # Path(__file__).parent / "../data/TinyStoriesV2-GPT4-train.txt",
         # "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/corpus.en",
         "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt",
         24,
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     )
     merges = []
     vocab = {}
-    for i in range(1):
+    for i in range(500):
         # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
         pairs_count = get_pairs_count(words_count)
         best_pair = max(
@@ -169,5 +169,12 @@ if __name__ == "__main__":
         words_count = merge_pair(words_count, best_pair)
         merges.append(best_pair)
         # vocab[len(vocab)] = best_pair[0] + best_pair[1]
+
+
+# %%
+if __name__ == "__main__":
+    import cProfile
+
+    cProfile.run("main()")
 
 # %%
