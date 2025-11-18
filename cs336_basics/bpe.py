@@ -1,7 +1,6 @@
 from cs336_basics.pretokenization_example import find_chunk_boundaries
 from multiprocessing import Pool
 from collections import Counter
-from itertools import chain
 import regex as re
 
 
@@ -47,10 +46,13 @@ def example():
     def decode_utf8_bytes_to_str_wrong(bytestring: bytes):
         return "".join([bytes([b]).decode("utf-8") for b in bytestring])
 
-    print(decode_utf8_bytes_to_str_wrong("hello".encode("utf-8")))
-    print(decode_utf8_bytes_to_str_wrong("牛".encode("utf-8")))
-    # %%
-    print(b"\xc0\x80".decode("utf-8"))
+    print(decode_utf8_bytes_to_str_wrong(b"hello"))
+    try:
+        print(decode_utf8_bytes_to_str_wrong("牛".encode("utf-8")))
+        print(b"\xc0\x80".decode("utf-8"))
+    except Exception as e:
+        print(e)
+
     # %%
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     import regex as re
@@ -62,93 +64,94 @@ def example():
 
 # %%
 PAT_GPT = re.compile(
-    r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 )
 
 
-def _process_get_tokens_from_chunk(args):
-    path, start, end, pattern = args
-
+def _process_get_words_count(args) -> dict[tuple[bytes], int]:
+    path, start, end, split_pattern = args
     with open(path, "rb") as f:
         f.seek(start)
-        chunk = f.read(end - start)
-
-    text = chunk.decode("utf-8", errors="ignore")
-    parts = re.split(pattern, text)
-
-    byte_tokens = []
-
-    for piece in parts:
+        chunck = f.read(end - start)  # .decode("utf-8", errors="ignore")
+    docs = re.split(split_pattern, chunck)
+    freq = Counter()
+    for piece in docs:
         for m in PAT_GPT.finditer(piece):
-            for b in m.group(0).encode("utf-8"):
-                byte_tokens.append(bytes(b))
+            key = tuple(bytes([b]) for b in m.group(0))
+            # key = tuple(m.group(0))
+            freq[key] += 1
+    return freq
 
-    return byte_tokens
 
-
-def get_byte_tokens(
+def pre_tokenization(
     path: str,
     num_processes: int,
-    spilit_key: bytes,
+    split_key: bytes,
     special_tokens: list[str],
-) -> list[bytes]:
+) -> dict[tuple[bytes], int]:
+    with open(path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, num_processes, split_key)
+    split_pattern = re.compile(
+        b"|".join(re.escape(t.encode("utf-8")) for t in special_tokens)
+    )
 
-    boundaries = find_chunk_boundaries(open(path, "rb"), num_processes, spilit_key)
-    pattern = "|".join(re.escape(t) for t in special_tokens)
     tasks = [
-        (path, start, end, pattern)
+        (path, start, end, split_pattern)
         for start, end in zip(boundaries[:-1], boundaries[1:])
     ]
-
     with Pool(processes=num_processes) as pool:
-        chunks = pool.map(_process_get_tokens_from_chunk, tasks)
+        results = pool.map(_process_get_words_count, tasks)
+    freq = {}
+    for res in results:
+        freq.update(res)
+    return freq
 
-    byte_tokens = list(chain.from_iterable(chunks))
-    return byte_tokens
+
+def get_pairs_count(
+    words: dict[tuple[bytes, ...], int],
+) -> dict[tuple[bytes, bytes], int]:
+    pairs = Counter()
+    for word, freq in words.items():
+        for i in range(len(word) - 1):
+            pairs[(word[i], word[i + 1])] += freq
+    return pairs
 
 
-def get_byte_pairs_with_merge(
-    byte_tokens: list[bytes], merge: tuple[bytes, bytes] | None
-):
-    freq = Counter()
-    new_byte_tokens: list[bytes] = []
-
-    if merge is not None:
-        m0, m1 = merge
-        merge_id = m0 + m1
-
-    i = 0
-    n = len(byte_tokens)
-    prev = None
-
-    while i < n:
-        if (
-            merge is not None
-            and i + 1 < n
-            and byte_tokens[i] == m0
-            and byte_tokens[i + 1] == m1
-        ):
-            cur = merge_id
-            i += 2
+def merge_pair(words: dict[tuple[bytes, ...], int], merge: tuple[bytes, bytes]):
+    a, b = merge
+    merged_words = {}
+    for word, freq in words.items():
+        tokens = word
+        new_tokens = []
+        changed = False
+        i = 0
+        while i < len(tokens):
+            if i < len(tokens) - 1 and tokens[i] == a and tokens[i + 1] == b:
+                new_tokens.append(a + b)
+                changed = True
+                i += 2
+            else:
+                new_tokens.append(tokens[i])
+                i += 1
+        if changed:
+            new_word = tuple(new_tokens)
         else:
-            cur = byte_tokens[i]
-            i += 1
+            new_word = word
+        merged_words[new_word] = freq
 
-        if prev is not None:
-            freq[(prev, cur)] += 1
-
-        new_byte_tokens.append(cur)
-        prev = cur
-
-    return new_byte_tokens, freq.most_common(1)[0][0]
+    return merged_words
 
 
+# %%
 if __name__ == "__main__":
     from pathlib import Path
 
-    res = get_byte_tokens(
+    words_count = pre_tokenization(
         Path(__file__).parent / "../data/TinyStoriesV2-GPT4-valid.txt",
         24,
         b"<|endoftext|>",
         ["<|endoftext|>"],
     )
+    pairs_count: Counter = get_pairs_count(words_count)
+    best_pair = pairs_count.most_common(1)[0][0]
+    res = merge_pair(words_count, best_pair)
