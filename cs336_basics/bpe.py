@@ -104,8 +104,9 @@ def pre_tokenization(
     ]
     with Pool(processes=num_processes) as pool:
         results = pool.map(_process_get_words_count, tasks)
-    freq = {}
+    freq = Counter()
     for res in results:
+        # Counter.update adds counts instead of overwriting existing keys.
         freq.update(res)
     return freq
 
