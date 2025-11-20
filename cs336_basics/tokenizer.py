@@ -12,6 +12,13 @@ class Tokenizer:
         )
         self.vocab = self.add_special_tokens(vocab, self.special_tokens)
         self.merges: dict[tuple[bytes, bytes], int] = {pair: rank for rank, pair in enumerate(merges)}
+        self.vocab_inverse: dict[bytes, int] = {v: k for k, v in self.vocab.items()}
+        self.gpt_pattern = re.compile(rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
+        self.special_tokens_pattern = (
+            re.compile(b"$^")
+            if self.special_tokens is None or len(self.special_tokens) == 0
+            else re.compile(b"(" + b"|".join(re.escape(t) for t in self.special_tokens) + b")")
+        )
 
     @classmethod
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None):
@@ -44,9 +51,11 @@ class Tokenizer:
                     if len(merge_word) > 1:
                         merge_word = self.apply_merge(merge_word)
                     for piece in merge_word:
-                        if piece not in self.vocab.values():
+                        if piece not in self.vocab_inverse:
                             self.special_tokens.append(piece)
-                            self.vocab[max(self.vocab.keys()) + 1] = piece
+                            new_tok_id = max(self.vocab.keys()) + 1
+                            self.vocab[new_tok_id] = piece
+                            self.vocab_inverse[piece] = new_tok_id
                         tok_ids.append(self.vocab_inverse[piece])
         return tok_ids
 
@@ -96,22 +105,6 @@ class Tokenizer:
                 tok_id = max(vocab.keys()) + 1
                 vocab[tok_id] = tok
         return vocab
-
-    @property
-    def vocab_inverse(self) -> dict[bytes, int]:
-        return {v: k for k, v in self.vocab.items()}
-
-    @property
-    def special_tokens_pattern(self):
-        return (
-            re.compile(b"$^")
-            if self.special_tokens is None or len(self.special_tokens) == 0
-            else re.compile(b"(" + b"|".join(re.escape(t) for t in self.special_tokens) + b")")
-        )
-
-    @property
-    def gpt_pattern(self):
-        return re.compile(rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
 
 
 if __name__ == "__main__":
