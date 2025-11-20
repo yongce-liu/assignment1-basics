@@ -63,12 +63,7 @@ def example():
 
 
 # %%
-PAT_GPT = re.compile(
-    rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-)
-# PAT_GPT = re.compile(
-#     rb"""\S+"""
-# )
+PAT_GPT = re.compile(rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
 
 
 def _process_get_words_count(args) -> dict[tuple[bytes], int]:
@@ -94,14 +89,9 @@ def pre_tokenization(
 ) -> dict[tuple[bytes], int]:
     with open(path, "rb") as f:
         boundaries = find_chunk_boundaries(f, num_processes, split_key)
-    split_pattern = re.compile(
-        b"|".join(re.escape(t.encode("utf-8")) for t in special_tokens)
-    )
+    split_pattern = re.compile(b"|".join(re.escape(t.encode("utf-8")) for t in special_tokens))
 
-    tasks = [
-        (path, start, end, split_pattern)
-        for start, end in zip(boundaries[:-1], boundaries[1:])
-    ]
+    tasks = [(path, start, end, split_pattern) for start, end in zip(boundaries[:-1], boundaries[1:])]
     with Pool(processes=num_processes) as pool:
         results = pool.map(_process_get_words_count, tasks)
     freq = Counter()
@@ -147,7 +137,7 @@ def merge_pair(words: dict[tuple[bytes, ...], int], merge: tuple[bytes, bytes]):
 
 
 # %%
-def main():
+def test():
     from pathlib import Path
 
     words_count = pre_tokenization(
@@ -164,17 +154,29 @@ def main():
         # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
         pairs_count = get_pairs_count(words_count)
         best_pair = max(
-            pairs_count.items(), key=lambda item: (item[1], item[0])  # (count, pair)
+            pairs_count.items(),
+            key=lambda item: (item[1], item[0]),  # (count, pair)
         )[0]
         words_count = merge_pair(words_count, best_pair)
         merges.append(best_pair)
-        # vocab[len(vocab)] = best_pair[0] + best_pair[1]
+        vocab[len(vocab)] = best_pair[0] + best_pair[1]
+
+
+def main():
+    from tests.adapters import run_train_bpe
+
+    run_train_bpe(
+        input_path="/home/yongce/aws/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt",
+        vocab_size=10000,
+        special_tokens=["<|endoftext|>"],
+    )
 
 
 # %%
 if __name__ == "__main__":
     import cProfile
 
-    cProfile.run("main()")
+    # cProfile.run("test()")
+    main()
 
 # %%

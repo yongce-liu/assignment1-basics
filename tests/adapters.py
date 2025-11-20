@@ -452,9 +452,7 @@ def run_cross_entropy(
     raise NotImplementedError
 
 
-def run_gradient_clipping(
-    parameters: Iterable[torch.nn.Parameter], max_l2_norm: float
-) -> None:
+def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
     """Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
 
     Args:
@@ -561,7 +559,9 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
+    from cs336_basics.tokenizer import Tokenizer
+
+    return Tokenizer(vocab=vocab, merges=merges, special_tokens=special_tokens)
 
 
 def run_train_bpe(
@@ -593,16 +593,14 @@ def run_train_bpe(
     """
     from cs336_basics.bpe import pre_tokenization, get_pairs_count, merge_pair
 
-    assert vocab_size >= 256 + len(
-        special_tokens
-    ), "vocab_size must be greater than 256+len(special_tokens)"
+    assert vocab_size >= 256 + len(special_tokens), "vocab_size must be greater than 256+len(special_tokens)"
     vocab = {i: bytes([i]) for i in range(256)}
     merges = []
     for i, tok in enumerate(special_tokens):
         vocab[256 + i] = tok.encode("utf-8")
     words_count = pre_tokenization(
         path=input_path,
-        num_processes=1,
+        num_processes=16,
         split_key=b"<|endoftext|>",
         special_tokens=special_tokens,
     )
@@ -610,7 +608,8 @@ def run_train_bpe(
         # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
         pairs_count = get_pairs_count(words_count)
         best_pair = max(
-            pairs_count.items(), key=lambda item: (item[1], item[0])  # (count, pair)
+            pairs_count.items(),
+            key=lambda item: (item[1], item[0]),  # (count, pair)
         )[0]
         words_count = merge_pair(words_count, best_pair)
         merges.append(best_pair)
