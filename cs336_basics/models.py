@@ -11,12 +11,15 @@ class Linear(torch.nn.Module):
         self.out_features = out_features
         self._factory_params = {"dtype": dtype, "device": device}
         self.weights = torch.nn.Parameter(
-            torch.empty(size=(self.out_features, self.in_features), **self._factory_params)
+            torch.empty(size=(self.in_features, self.out_features), **self._factory_params)
         )
         self.reset_weights()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.weights.to(device=x.device) @ x
+        print(x.shape)
+        print(self.weights.shape)
+
+        return x @ self.weights.to(device=x.device)
 
     def reset_weights(self) -> None:
         sigma = (2 / (self.in_features + self.out_features)) ** 0.5
@@ -24,5 +27,4 @@ class Linear(torch.nn.Module):
 
     def load_weights(self, weights: Float[torch.Tensor, " d_out d_in"]) -> None:
         # self.weights = torch.nn.Parameter(self.load_state_dict(weights))
-        self.weights.data.copy_(weights)
-        self.reset_weights()
+        self.weights.data.copy_(weights.T)
