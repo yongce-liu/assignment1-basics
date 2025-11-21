@@ -28,3 +28,22 @@ class Linear(torch.nn.Module):
     def load_weights(self, weights: Float[torch.Tensor, " d_out d_in"]) -> None:
         # self.weights = torch.nn.Parameter(self.load_state_dict(weights))
         self.weights.data.copy_(weights.T)
+
+
+class Embedding(torch.nn.Module):
+    def __init__(self, num_embeddings: int, embedding_dim: int, device=None, dtype=None):
+        super().__init__()
+        self._factory_params = {"device": device, "dtype": dtype}
+        self.weights = torch.nn.Parameter(torch.empty(size=(num_embeddings, embedding_dim), **self._factory_params))
+        self.reset_weights()
+
+    def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
+        return self.weights[token_ids].detach().to(token_ids.device)
+
+    def reset_weights(self) -> None:
+        sigma = 1
+        self.weights = torch.nn.init.trunc_normal_(self.weights, mean=0, std=sigma, a=-3 * sigma, b=3 * sigma)
+
+    def load_weights(self, weights: Float[torch.Tensor, "vocab_size d_model"]) -> None:
+        # self.weights = torch.nn.Parameter(self.load_state_dict(weights))
+        self.weights.data.copy_(weights)
