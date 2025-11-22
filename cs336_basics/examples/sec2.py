@@ -109,3 +109,12 @@ used_rot_mat = rot_mat[:10]
 torch.einsum("...k, ...kj -> ...j", a, used_rot_mat).shape
 
 # %%
+a = torch.randn(size=((2, 3, 4)))
+print(a.sum(dim=0).shape)
+print(a.sum(dim=1).shape)
+print(a.sum(dim=2).shape)
+
+# %%
+a = torch.randn(size=(64, 10, 32))
+b = a.clone()
+print(torch.concatenate([a, b], dim=-1).shape)

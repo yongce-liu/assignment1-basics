@@ -1,5 +1,6 @@
 import math
 import torch
+from copy import deepcopy
 from torch.nn import Module
 from jaxtyping import Float
 
@@ -130,3 +131,73 @@ class RoPE(Module):
         theta in rad
         """
         return torch.tensor([[math.cos(theta), -math.sin(theta)], [math.sin(theta), math.cos(theta)]], **kwargs)
+
+
+def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+    max_x = torch.max(x, dim=dim, keepdim=True).values
+    x_stable = x - max_x
+    exp_x = torch.exp(x_stable)
+    sum_exp_x = torch.sum(exp_x, dim=dim, keepdim=True)
+    p = exp_x / sum_exp_x
+
+    return p
+
+
+def attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+    """
+    Q: b, ..., s, d_k
+    K: b, ..., s, d_k
+    V: b, ..., s, d_v
+    mask: bool
+    -> : b, ..., d_v
+    """
+    sqrt_d_k = Q.shape[-1] ** 0.5
+    val = torch.einsum("... n k, ... m k -> ... n m", Q, K) / sqrt_d_k
+
+    if mask is not None:
+        neg_inf = torch.finfo(val.dtype).min
+        val = val.masked_fill(~mask, value=neg_inf)
+    val = softmax(val, dim=-1)
+    atten = torch.einsum("... n m, ... m v -> ... n v", val, V)
+    return atten
+
+
+class MultiHeadAttention(Module):
+    def __init__(self, d_in: int, d_model: int, d_v: int, num_heads: int):
+        super().__init__()
+        self.d_in = d_in
+        self.d_model = d_model
+        self.d_v = d_v
+        self.num_heads = num_heads
+
+        self._d_k = int(d_model / num_heads)
+        self._d_v = int(d_v / num_heads)
+        head_transforms = [
+            Linear(in_features=self.d_in, out_features=self._d_k),  # Q
+            Linear(in_features=self.d_in, out_features=self._d_k),  # K
+            Linear(in_features=self.d_in, out_features=self._d_v),  # V
+        ]
+        self.transforms = self.num_heads * [deepcopy(head_transforms)]
+        self.output_transform = Linear(in_features=self.d_v, out_features=self.d_model)  # O
+
+    def load_weights(self, weights: list[list[torch.Tensor]]) -> None:
+        for i, trans in enumerate(self.transforms):
+            if isinstance(weights[i], list):
+                for j, mod in enumerate(trans):
+                    mod.load_weights(weights=weights[i][j])
+        self.output_transform.load_weights(weights[-1][-1])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        res = []
+        for models in self.transforms:
+            Q = models[0].forward(
+                x
+            )  # need rope for position encoding, however, in the assignment, we didn't have hyper=params
+            K = models[1].forward(x)
+            V = models[2].forward(x)
+            mask = torch.tril(torch.ones(Q.shape[-2], K.shape[-2], dtype=torch.bool, device=Q.device))
+            atten = attention(Q, K, V, mask)
+            res.append(atten)
+        res = torch.concatenate(res, dim=-1)
+
+        return self.output_transform(res)

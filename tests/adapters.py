@@ -114,7 +114,9 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    from cs336_basics.models import attention
+
+    return attention(Q, K, V, mask)
 
 
 def run_multihead_self_attention(
@@ -148,7 +150,29 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.models import MultiHeadAttention
+
+    d_in = in_features.shape[-1]
+    d_k = q_proj_weight.shape[-2]
+    d_v = v_proj_weight.shape[-2]
+    d_model = o_proj_weight.shape[-2] # output dimention through the attention
+    
+    _d_k = int(d_k / num_heads)
+    _d_v = int(d_v / num_heads)
+
+    pieces_weights = []
+    for i in range(num_heads):
+        template = [
+            q_proj_weight[i * _d_k : (i + 1) * _d_k].T,
+            k_proj_weight[i * _d_k : (i + 1) * _d_k].T,
+            v_proj_weight[i * _d_v : (i + 1) * _d_v].T,
+        ]
+        pieces_weights.append(template)
+    pieces_weights.append([o_proj_weight.T])
+
+    model = MultiHeadAttention(d_in=d_in, d_v=d_v, d_model=d_model, num_heads=num_heads)
+    model.load_weights(pieces_weights)
+    return model.forward(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -448,7 +472,9 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    from cs336_basics.models import softmax
+
+    return softmax(in_features, dim)
 
 
 def run_cross_entropy(

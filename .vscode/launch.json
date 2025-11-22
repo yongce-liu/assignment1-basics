@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // 配置名称：用于在 VS Code 调试面板中选择
+            "name": "Debug Specific Pytest (Keyword)",
+            "type": "debugpy",
+            "request": "launch",
+
+            // 程序的路径：通常是你的虚拟环境中的 Python 解释器或管理脚本
+            // 如果你使用 uv run，你不需要直接指定 python 解释器
+            // 而是直接运行 uv
+            "program": "${workspaceFolder}/.venv/bin/pytest",
+
+            // 传递给 uv run 的参数
+            "args": [
+                "-k", // Pytest 关键字过滤
+                "test_multihead_self_attention" // 要运行的特定测试关键字
+            ],
+
+            // 调试器从项目根目录启动
+            "cwd": "${workspaceFolder}", 
+            
+            // 在集成终端中运行，这样可以看到 pytest 的输出
+            "console": "integratedTerminal", 
+            
+            // 确保调试器可以进入您的项目代码，而不是只停留在 uv/pytest 内部
+            "justMyCode": false
+        }
+    ]
+}
