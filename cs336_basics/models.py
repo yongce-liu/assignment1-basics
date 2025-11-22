@@ -163,41 +163,30 @@ def attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Ten
 
 
 class MultiHeadAttention(Module):
-    def __init__(self, d_in: int, d_model: int, d_v: int, num_heads: int):
+    def __init__(self, d_model: int, num_heads: int):
         super().__init__()
-        self.d_in = d_in
         self.d_model = d_model
-        self.d_v = d_v
         self.num_heads = num_heads
+        self.d_k = d_model // num_heads
 
-        self._d_k = int(d_model / num_heads)
-        self._d_v = int(d_v / num_heads)
-        head_transforms = [
-            Linear(in_features=self.d_in, out_features=self._d_k),  # Q
-            Linear(in_features=self.d_in, out_features=self._d_k),  # K
-            Linear(in_features=self.d_in, out_features=self._d_v),  # V
-        ]
-        self.transforms = self.num_heads * [deepcopy(head_transforms)]
-        self.output_transform = Linear(in_features=self.d_v, out_features=self.d_model)  # O
+        self.transforms = {
+            "Q": Linear(in_features=d_model, out_features=d_model),  # Q
+            "K": Linear(in_features=d_model, out_features=d_model),  # K
+            "V": Linear(in_features=d_model, out_features=d_model),  # V
+            "O": Linear(in_features=d_model, out_features=d_model),  # O
+        }
 
-    def load_weights(self, weights: list[list[torch.Tensor]]) -> None:
-        for i, trans in enumerate(self.transforms):
-            if isinstance(weights[i], list):
-                for j, mod in enumerate(trans):
-                    mod.load_weights(weights=weights[i][j])
-        self.output_transform.load_weights(weights[-1][-1])
+    def load_weights(self, weights: dict[str, torch.Tensor]) -> None:
+        for k, v in weights.items():
+            self.transforms[k].load_weights(v)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        res = []
-        for models in self.transforms:
-            Q = models[0].forward(
-                x
-            )  # need rope for position encoding, however, in the assignment, we didn't have hyper=params
-            K = models[1].forward(x)
-            V = models[2].forward(x)
-            mask = torch.tril(torch.ones(Q.shape[-2], K.shape[-2], dtype=torch.bool, device=Q.device))
-            atten = attention(Q, K, V, mask)
-            res.append(atten)
-        res = torch.concatenate(res, dim=-1)
+        b, s, d = x.shape
+        Q = self.transforms["Q"].forward(x).view(b, s, -1, self.d_k).transpose(1, 2)
+        K = self.transforms["K"].forward(x).view(b, s, -1, self.d_k).transpose(1, 2)
+        V = self.transforms["V"].forward(x).view(b, s, -1, self.d_k).transpose(1, 2)
 
-        return self.output_transform(res)
+        mask = torch.tril(torch.ones(s, s, dtype=torch.bool, device=Q.device)).unsqueeze(0).unsqueeze(0)
+        atten = attention(Q, K, V, mask).transpose(1, 2).reshape(b, s, -1)
+
+        return self.transforms["O"].forward(atten)

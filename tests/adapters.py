@@ -152,26 +152,8 @@ def run_multihead_self_attention(
     """
     from cs336_basics.models import MultiHeadAttention
 
-    d_in = in_features.shape[-1]
-    d_k = q_proj_weight.shape[-2]
-    d_v = v_proj_weight.shape[-2]
-    d_model = o_proj_weight.shape[-2] # output dimention through the attention
-    
-    _d_k = int(d_k / num_heads)
-    _d_v = int(d_v / num_heads)
-
-    pieces_weights = []
-    for i in range(num_heads):
-        template = [
-            q_proj_weight[i * _d_k : (i + 1) * _d_k].T,
-            k_proj_weight[i * _d_k : (i + 1) * _d_k].T,
-            v_proj_weight[i * _d_v : (i + 1) * _d_v].T,
-        ]
-        pieces_weights.append(template)
-    pieces_weights.append([o_proj_weight.T])
-
-    model = MultiHeadAttention(d_in=d_in, d_v=d_v, d_model=d_model, num_heads=num_heads)
-    model.load_weights(pieces_weights)
+    model = MultiHeadAttention(d_model=d_model, num_heads=num_heads)
+    model.load_weights({"Q": q_proj_weight.T, "K": k_proj_weight.T, "V": v_proj_weight.T, "O": o_proj_weight.T})
     return model.forward(in_features)
 
 
