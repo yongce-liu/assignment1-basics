@@ -31,7 +31,7 @@ def run_linear(
     from cs336_basics.models import Linear
 
     model = Linear(in_features=d_in, out_features=d_out)
-    model.load_weights(weights)
+    model.load_weights(weights.T)
     return model.forward(in_features)
 
 
@@ -89,7 +89,11 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    from cs336_basics.models import SwiGLUFFN
+
+    model = SwiGLUFFN(d_model, d_ff)
+    model.load_weights([w1_weight.T, w2_weight.T, w3_weight.T])
+    return model.forward(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -206,7 +210,10 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    from cs336_basics.models import RoPE
+
+    model = RoPE(theta, d_k, max_seq_len)
+    return model.forward(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -384,7 +391,11 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    from cs336_basics.models import RmsNorm
+
+    model = RmsNorm(d_model, eps)
+    model.load_weights(weights)
+    return model.forward(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:

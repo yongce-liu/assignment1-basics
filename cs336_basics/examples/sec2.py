@@ -95,3 +95,17 @@ linear_weights = (
 # if away from the mean, resample
 linear_weights = torch.nn.init.trunc_normal_(linear_weights, std=sigma, a=-3 * sigma, b=3 * sigma)
 # %%
+a = torch.zeros(size=(10,))
+print(a.shape)
+print(a.unsqueeze(0).shape)
+# %%
+a = torch.randn(size=(2, 2))
+print(torch.block_diag(*[a.clone()]*4))
+
+# %%
+a = torch.randn(size=(64, 10, 512))
+rot_mat = torch.randn(size=(20, 512, 512))
+used_rot_mat = rot_mat[:10]
+torch.einsum("...k, ...kj -> ...j", a, used_rot_mat).shape
+
+# %%
