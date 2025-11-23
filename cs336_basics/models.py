@@ -33,7 +33,7 @@ class Embedding(Module):
         self.reset_weight()
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        return self.weight[token_ids].detach().to(token_ids.device)
+        return self.weight[token_ids].to(token_ids.device)
 
     def reset_weight(self) -> None:
         sigma = 1

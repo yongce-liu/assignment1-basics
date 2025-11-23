@@ -122,3 +122,30 @@ print(torch.concatenate([a, b], dim=-1).shape)
 # %%
 print(torch.randn(size=(64, 10, 32))[*[None] * 3, ...].shape)
 # %%
+vocab_size = 50257
+context_length = 1024
+num_layers = 48
+d_model = 1600
+num_heads = 25
+d_ff = 6400
+
+num_parameters = {
+    "embedding": vocab_size * d_model,
+    "layers": num_layers * (d_model * d_model * 4 + d_model * d_ff * 3 + d_model + d_model),
+    "ln_final": d_model,
+    "lm_head": d_model * vocab_size,
+}
+print(
+    f"num_parameters: {sum(num_parameters.values())}, used memory (sigle precision): {sum(num_parameters.values()) * 4 / 1024 / 1024 / 1024} GB"
+)
+
+
+
+
+# %%
+from cs336_basics.models import Transformer
+model = Transformer(vocab_size=vocab_size, d_model=d_model, num_heads=num_heads, d_ff=d_ff, num_layers=num_layers, rope_theta=1, context_length=100)
+num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Total params: {num_params}")
+assert num_params == sum(num_parameters.values())
+# %%
