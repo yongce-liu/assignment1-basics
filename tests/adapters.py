@@ -31,8 +31,8 @@ def run_linear(
     from cs336_basics.models import Linear
 
     model = Linear(in_features=d_in, out_features=d_out)
-    model.load_weights(weights.T)
-    return model.forward(in_features)
+    model.load_state_dict({"weight": weights})
+    return model(in_features)
 
 
 def run_embedding(
@@ -56,8 +56,8 @@ def run_embedding(
     from cs336_basics.models import Embedding
 
     model = Embedding(vocab_size, d_model)
-    model.load_weights(weights)
-    return model.forward(token_ids)
+    model.load_state_dict({"weight": weights})
+    return model(token_ids)
 
 
 def run_swiglu(
@@ -92,8 +92,9 @@ def run_swiglu(
     from cs336_basics.models import SwiGLUFFN
 
     model = SwiGLUFFN(d_model, d_ff)
-    model.load_weights([w1_weight.T, w2_weight.T, w3_weight.T])
-    return model.forward(in_features)
+    model.load_state_dict({"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight})
+
+    return model(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -153,8 +154,16 @@ def run_multihead_self_attention(
     from cs336_basics.models import MultiHeadAttention
 
     model = MultiHeadAttention(d_model=d_model, num_heads=num_heads)
-    model.load_weights({"Q": q_proj_weight.T, "K": k_proj_weight.T, "V": v_proj_weight.T, "O": o_proj_weight.T})
-    return model.forward(in_features)
+    model.load_state_dict(
+        {
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
+
+    return model(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -194,7 +203,19 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    from cs336_basics.models import MultiHeadAttention, RoPE
+
+    model_rope = RoPE(theta=theta, d_k=d_model // num_heads, max_seq_len=max_seq_len)
+    model_attention = MultiHeadAttention(d_model=d_model, num_heads=num_heads, rope=model_rope)
+    model_attention.load_state_dict(
+        {
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
+    return model_attention(in_features, token_positions)
 
 
 def run_rope(
@@ -219,7 +240,7 @@ def run_rope(
     from cs336_basics.models import RoPE
 
     model = RoPE(theta, d_k, max_seq_len)
-    return model.forward(in_query_or_key, token_positions)
+    return model(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -292,7 +313,12 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.models import TransformerBlock, RoPE
+
+    rope = RoPE(theta=theta, d_k=d_model // num_heads, max_seq_len=max_seq_len)
+    transformer_block = TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, rope=rope)
+    transformer_block.load_state_dict(weights)
+    return transformer_block(in_features)
 
 
 def run_transformer_lm(
@@ -374,7 +400,19 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    from cs336_basics.models import Transformer
+
+    model = Transformer(
+        vocab_size=vocab_size,
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        num_layers=num_layers,
+        rope_theta=rope_theta,
+        context_length=context_length,
+    )
+    model.load_state_dict(weights)
+    return model(in_indices)
 
 
 def run_rmsnorm(
@@ -400,8 +438,8 @@ def run_rmsnorm(
     from cs336_basics.models import RmsNorm
 
     model = RmsNorm(d_model, eps)
-    model.load_weights(weights)
-    return model.forward(in_features)
+    model.load_state_dict({"weight": weights})
+    return model(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:

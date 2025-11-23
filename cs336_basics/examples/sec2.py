@@ -100,7 +100,7 @@ print(a.shape)
 print(a.unsqueeze(0).shape)
 # %%
 a = torch.randn(size=(2, 2))
-print(torch.block_diag(*[a.clone()]*4))
+print(torch.block_diag(*[a.clone()] * 4))
 
 # %%
 a = torch.randn(size=(64, 10, 512))
@@ -118,3 +118,7 @@ print(a.sum(dim=2).shape)
 a = torch.randn(size=(64, 10, 32))
 b = a.clone()
 print(torch.concatenate([a, b], dim=-1).shape)
+
+# %%
+print(torch.randn(size=(64, 10, 32))[*[None] * 3, ...].shape)
+# %%

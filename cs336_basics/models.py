@@ -1,6 +1,5 @@
 import math
 import torch
-from copy import deepcopy
 from torch.nn import Module
 from jaxtyping import Float
 
@@ -13,40 +12,32 @@ class Linear(Module):
         self.in_features = in_features
         self.out_features = out_features
         self._factory_params = {"dtype": dtype, "device": device}
-        self.weights = torch.nn.Parameter(
-            torch.empty(size=(self.in_features, self.out_features), **self._factory_params)
+        self.weight = torch.nn.Parameter(
+            torch.empty(size=(self.out_features, self.in_features), **self._factory_params)
         )
-        self.reset_weights()
+        self.reset_weight()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x @ self.weights.to(device=x.device)
+        return torch.einsum("...i, o i -> ...o", x, self.weight.to(x.device))
 
-    def reset_weights(self) -> None:
+    def reset_weight(self) -> None:
         sigma = (2 / (self.in_features + self.out_features)) ** 0.5
-        self.weights = torch.nn.init.trunc_normal_(self.weights, mean=0, std=sigma, a=-3 * sigma, b=3 * sigma)
-
-    def load_weights(self, weights: Float[torch.Tensor, " d_in d_out"]) -> None:
-        # self.weights = torch.nn.Parameter(self.load_state_dict(weights))
-        self.weights.data.copy_(weights)
+        self.weight = torch.nn.init.trunc_normal_(self.weight, mean=0, std=sigma, a=-3 * sigma, b=3 * sigma)
 
 
 class Embedding(Module):
     def __init__(self, num_embeddings: int, embedding_dim: int, device=None, dtype=None):
         super().__init__()
         self._factory_params = {"device": device, "dtype": dtype}
-        self.weights = torch.nn.Parameter(torch.empty(size=(num_embeddings, embedding_dim), **self._factory_params))
-        self.reset_weights()
+        self.weight = torch.nn.Parameter(torch.empty(size=(num_embeddings, embedding_dim), **self._factory_params))
+        self.reset_weight()
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        return self.weights[token_ids].detach().to(token_ids.device)
+        return self.weight[token_ids].detach().to(token_ids.device)
 
-    def reset_weights(self) -> None:
+    def reset_weight(self) -> None:
         sigma = 1
-        self.weights = torch.nn.init.trunc_normal_(self.weights, mean=0, std=sigma, a=-3 * sigma, b=3 * sigma)
-
-    def load_weights(self, weights: Float[torch.Tensor, "vocab_size d_model"]) -> None:
-        # self.weights = torch.nn.Parameter(self.load_state_dict(weights))
-        self.weights.data.copy_(weights)
+        self.weight = torch.nn.init.trunc_normal_(self.weight, mean=0, std=sigma, a=-3 * sigma, b=3 * sigma)
 
 
 class RmsNorm(Module):
@@ -55,46 +46,37 @@ class RmsNorm(Module):
         self._factory_params = {"device": device, "dtype": dtype}
         self.d_model = d_model
         self.eps = eps
-        self.gain = torch.nn.Parameter(torch.empty(size=(self.d_model,), **self._factory_params))
+        self.weight = torch.nn.Parameter(torch.empty(size=(self.d_model,), **self._factory_params))
 
     def forward(self, x: Float[torch.Tensor, " ... d_model"]) -> torch.Tensor:
         in_dtype = x.dtype
         x = x.to(torch.float32)
-        res = x / torch.sqrt(torch.sum(x**2, dim=-1, keepdim=True) / self.d_model + self.eps) * self.gain.to(x.device)
+        res = x / torch.sqrt(torch.sum(x**2, dim=-1, keepdim=True) / self.d_model + self.eps) * self.weight.to(x.device)
 
         return res.to(in_dtype)
 
-    def reset_weights(self) -> None:
-        self.gain = torch.nn.Parameter(torch.ones(size=(self.d_model,), **self._factory_params))
-
-    def load_weights(self, weights: Float[torch.Tensor, " d_model"]) -> None:
-        self.gain.data.copy_(weights)
+    def reset_weight(self) -> None:
+        self.weight = torch.nn.Parameter(torch.ones(size=(self.d_model,), **self._factory_params))
 
 
 class SwiGLUFFN(Module):
     def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
         super().__init__()
         self._factory_params = {"device": device, "dtype": dtype}
-        self.transforms: list[Linear] = [
-            Linear(d_model, d_ff, **self._factory_params),
-            Linear(d_ff, d_model, **self._factory_params),
-            Linear(d_model, d_ff, **self._factory_params),
-        ]
+        self.w1 = Linear(d_model, d_ff, **self._factory_params)
+        self.w2 = Linear(d_ff, d_model, **self._factory_params)
+        self.w3 = Linear(d_model, d_ff, **self._factory_params)
 
-    def reset_weights(self) -> None:
-        for transform in self.transforms:
-            transform.reset_weights()
-
-    def load_weights(self, weights: list[torch.Tensor]) -> None:
-        for weight, transform in zip(weights, self.transforms):
-            transform.load_weights(weight)
+    def reset_weight(self) -> None:
+        for mod in self.modules():
+            mod.reset_weight()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x0 = self.transforms[0].forward(x)
-        x2 = self.transforms[2].forward(x)
-        x1 = x0 * torch.sigmoid(x0) * x2
+        x1 = self.w1.forward(x)
+        x3 = self.w3.forward(x)
+        x2 = x1 * torch.sigmoid(x1) * x3
 
-        return self.transforms[1].forward(x1)
+        return self.w2.forward(x2)
 
 
 class RoPE(Module):
@@ -163,30 +145,104 @@ def attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Ten
 
 
 class MultiHeadAttention(Module):
-    def __init__(self, d_model: int, num_heads: int):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        d_in: int = None,
+        d_v: int = None,
+        d_out: int = None,
+        rope: RoPE = None,
+        device=None,
+        dtype=None,
+    ):
         super().__init__()
-        self.d_model = d_model
+        self._factory_params = {"device": device, "dtype": dtype}
+        self.d_in = d_model if d_in is None else d_in
+        self.d_k = self.d_model = d_model
+        self.d_v = d_model if d_v is None else d_v
+        self.d_out = d_model if d_out is None else d_out
+
         self.num_heads = num_heads
-        self.d_k = d_model // num_heads
+        self._d_k = d_model // num_heads
 
-        self.transforms = {
-            "Q": Linear(in_features=d_model, out_features=d_model),  # Q
-            "K": Linear(in_features=d_model, out_features=d_model),  # K
-            "V": Linear(in_features=d_model, out_features=d_model),  # V
-            "O": Linear(in_features=d_model, out_features=d_model),  # O
-        }
+        self.q_proj = Linear(in_features=self.d_in, out_features=self.d_k, **self._factory_params)
+        self.k_proj = Linear(in_features=self.d_in, out_features=self.d_k, **self._factory_params)
+        self.v_proj = Linear(in_features=self.d_in, out_features=self.d_v, **self._factory_params)
+        self.output_proj = Linear(in_features=self.d_v, out_features=self.d_out, **self._factory_params)
+        self.rope = rope
 
-    def load_weights(self, weights: dict[str, torch.Tensor]) -> None:
-        for k, v in weights.items():
-            self.transforms[k].load_weights(v)
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor = None) -> torch.Tensor:
+        x_shapes = x.shape[:-1]
+        Q = self.q_proj.forward(x).reshape(*x_shapes, -1, self._d_k).transpose(-2, -3)
+        K = self.k_proj.forward(x).reshape(*x_shapes, -1, self._d_k).transpose(-2, -3)
+        V = self.v_proj.forward(x).reshape(*x_shapes, -1, self._d_k).transpose(-2, -3)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, s, d = x.shape
-        Q = self.transforms["Q"].forward(x).view(b, s, -1, self.d_k).transpose(1, 2)
-        K = self.transforms["K"].forward(x).view(b, s, -1, self.d_k).transpose(1, 2)
-        V = self.transforms["V"].forward(x).view(b, s, -1, self.d_k).transpose(1, 2)
+        if self.rope is not None:
+            if token_positions is None:
+                # Default to sequential positions [0, 1, 2, ..., seq_len-1]
+                seq_len = x_shapes[-1]
+                token_positions = torch.arange(seq_len, device=x.device)
+                # Broadcast to match batch dimensions if needed
+                for _ in range(len(x_shapes) - 1):
+                    token_positions = token_positions.unsqueeze(0)
+            Q = self.rope(Q, token_positions)
+            K = self.rope(K, token_positions)
 
-        mask = torch.tril(torch.ones(s, s, dtype=torch.bool, device=Q.device)).unsqueeze(0).unsqueeze(0)
-        atten = attention(Q, K, V, mask).transpose(1, 2).reshape(b, s, -1)
+        mask = torch.tril(torch.ones(x_shapes[-1], x_shapes[-1], dtype=torch.bool, device=Q.device))[
+            *([None] * (len(x_shapes) - 1)), ...
+        ]
+        atten = attention(Q, K, V, mask).transpose(-2, -3).reshape(*x_shapes, -1)
 
-        return self.transforms["O"].forward(atten)
+        return self.output_proj.forward(atten)
+
+
+class TransformerBlock(Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, rope: RoPE = None, device=None, dtype=None):
+        super().__init__()
+        self._factory_params = {"device": device, "dtype": dtype}
+        self.attn = MultiHeadAttention(d_model=d_model, num_heads=num_heads, rope=rope, **self._factory_params)
+        self.ffn = SwiGLUFFN(d_model=d_model, d_ff=d_ff, **self._factory_params)
+        self.ln1 = RmsNorm(d_model=d_model, **self._factory_params)
+        self.ln2 = RmsNorm(d_model=d_model, **self._factory_params)
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor = None):
+        y1 = x + self.attn(self.ln1(x), token_positions)
+        y2 = y1 + self.ffn(self.ln2(y1))
+
+        return y2
+
+
+class Transformer(Module):
+    def __init__(
+        self,
+        vocab_size: int,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        num_layers: int,
+        rope_theta: float,
+        context_length: int,
+        device=None,
+        dtype=None,
+    ):
+        super().__init__()
+        self._factory_params = {"device": device, "dtype": dtype}
+        self.token_embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, **self._factory_params)
+        rope = RoPE(rope_theta, d_model // num_heads, context_length)
+        self.layers = torch.nn.ModuleList(
+            [
+                TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, rope=rope, **self._factory_params)
+                for _ in range(num_layers)
+            ]
+        )
+        self.ln_final = RmsNorm(d_model=d_model)
+        self.lm_head = Linear(in_features=d_model, out_features=vocab_size)
+
+    def forward(self, x: torch.Tensor):
+        x = self.token_embeddings(x)
+        for m_block in self.layers:
+            x = m_block(x)
+        x = self.ln_final(x)
+        x = self.lm_head(x)
+        return x
