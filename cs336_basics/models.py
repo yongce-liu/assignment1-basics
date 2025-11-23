@@ -246,3 +246,12 @@ class Transformer(Module):
         x = self.ln_final(x)
         x = self.lm_head(x)
         return x
+
+
+def cross_entropy_loss(x: torch.Tensor, y: torch.Tensor):
+    max_logits = x.max(dim=-1, keepdim=True).values
+    logsumexp = torch.log(torch.sum(torch.exp(x - max_logits), dim=-1))
+    correct_logits = x[torch.arange(x.size(0)), y]
+    loss = -correct_logits + max_logits.unsqueeze(-1) + logsumexp
+
+    return loss.mean()
