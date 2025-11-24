@@ -1,7 +1,9 @@
 import math
 import torch
 from torch.nn import Module
+from torch.optim import Optimizer, lr_scheduler
 from jaxtyping import Float
+from collections.abc import Callable
 
 
 class Linear(Module):
@@ -255,3 +257,50 @@ def cross_entropy_loss(x: torch.Tensor, y: torch.Tensor):
     loss = -correct_logits + max_logits.unsqueeze(-1) + logsumexp
 
     return loss.mean()
+
+
+class AdamW(Optimizer):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), weight_decay=0.01, eps=1e-8):
+        if lr < 0:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)
+        super().__init__(params, defaults)
+        self.eps = eps
+
+    @torch.no_grad
+    def step(self, closure: Callable | None = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"]
+            beta1, beta2 = group["betas"]
+            wd = group["weight_decay"]
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                # auto grad data
+                g = p.grad.data
+                # get hyper-parameters
+                state = self.state[p]
+                if len(state) == 0:
+                    state["t"] = 0  # it is the number, so assignment no wekcopy
+                    state["exp_avg"] = torch.zeros_like(p)
+                    state["exp_avg_sq"] = torch.zeros_like(p)
+                t = state["t"] = state["t"] + 1
+                m = state["exp_avg"]
+                v = state["exp_avg_sq"]
+                # update 1st moment estimate
+                # m.mul_(beta1).add_(g, alpha=1 - beta1)
+                m[:] = beta1 * m + (1 - beta1) * g
+                # update 2rd moment estimate
+                # v.mul_(beta2).addcmul_(g, g, value=1 - beta2)
+                v[:] = beta2 * v + (1 - beta2) * g**2
+                # update learning rate
+                lr_t = lr * (1 - beta2**t) ** 0.5 / (1 - beta1**t)
+                # !!!!! update parameters !!!!!
+                # p.data.addcdiv_(m, v.sqrt().add_(self.eps), value=-lr_t)
+                p[:] = p - lr_t * m / (v**0.5 + self.eps)
+                # !!!!! weight decay !!!!!
+                if wd > 0:
+                    # p.data.add_(p, alpha=-lr * wd)
+                    p[:] = p - lr * wd * p
+        return loss
