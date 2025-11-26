@@ -15,6 +15,23 @@ from cs336_basics.models import (
 )
 
 
+def set_seed(seed):
+    import torch
+    import numpy as np
+    import random
+    import os
+
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
 def dataloader(x: np.ndarray, batch_size: int, context_length: int, device: str = "cpu"):
     # Numpy implements this through
     # np.memmap (or the flag mmap_mode='r' to np.load, if you originally saved the array with np.save), which
@@ -40,9 +57,9 @@ def save_checkpoint(
     iteration: int,
     out: str | os.PathLike | typing.BinaryIO | typing.IO[bytes],
 ):
-    ckp = dict(model=model.state_dict(), optimizer=optimizer.state_dict(), iteration=iteration)
+    ckpt = dict(model=model.state_dict(), optimizer=optimizer.state_dict(), iteration=iteration)
     f = open(out, "wb") if isinstance(out, (str, os.PathLike)) else out
-    pkl.dump(ckp, f)
+    pkl.dump(ckpt, f)
 
 
 def load_checkpoint(
@@ -51,13 +68,14 @@ def load_checkpoint(
     optimizer: torch.optim.Optimizer,
 ):
     f = open(src, "rb") if isinstance(src, (str, os.PathLike)) else src
-    ckp = pkl.load(f)
-    model.load_state_dict(ckp["model"])
-    optimizer.load_state_dict(ckp["optimizer"])
-    return ckp["iteration"]
+    ckpt = pkl.load(f)
+    model.load_state_dict(ckpt["model"])
+    optimizer.load_state_dict(ckpt["optimizer"])
+    return ckpt["iteration"]
 
 
 class TrainingArgs(argparse.Namespace):
+    name: str
     train_path: str
     valid_path: str
     vocab_size: int
@@ -67,6 +85,7 @@ class TrainingArgs(argparse.Namespace):
     d_ff: int
     num_layers: int
     rope_theta: float
+    seed: int
     batch_size: int
     lr: float
     max_iters: int
@@ -78,13 +97,14 @@ class TrainingArgs(argparse.Namespace):
     log_interval: int
     eval_interval: int
     eval_iters: int
-    wandb_project: str | None
-    resume_from: str | None
+    wandb_entity: str | None
+    resume: str | None
 
 
 def get_args() -> TrainingArgs:
     parser = argparse.ArgumentParser(description="Train a Transformer model")
 
+    parser.add_argument("--name", type=str, required=True, help="project name")
     # Data arguments
     parser.add_argument("--train_path", type=str, required=True, help="Path to training data (numpy memmap)")
     parser.add_argument("--valid_path", type=str, required=True, help="Path to validation data (numpy memmap)")
@@ -99,6 +119,7 @@ def get_args() -> TrainingArgs:
     parser.add_argument("--rope_theta", type=float, default=10000.0, help="RoPE theta")
 
     # Training arguments
+    parser.add_argument("--seed", type=int, default=0, help="Batch size")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=6e-4, help="Max learning rate")
     parser.add_argument("--max_iters", type=int, default=5000, help="Total training iterations")
@@ -112,8 +133,8 @@ def get_args() -> TrainingArgs:
     parser.add_argument("--log_interval", type=int, default=10, help="Log interval")
     parser.add_argument("--eval_interval", type=int, default=500, help="Evaluation interval")
     parser.add_argument("--eval_iters", type=int, default=200, help="Number of iterations for evaluation")
-    parser.add_argument("--wandb_project", type=str, default=None, help="WandB project name")
-    parser.add_argument("--resume_from", type=str, default=None, help="Path to checkpoint to resume from")
+    parser.add_argument("--wandb_entity", type=str, default="yongce_llm", help="WandB entity name")
+    parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
 
     return parser.parse_args(namespace=TrainingArgs())
 
@@ -126,6 +147,7 @@ def estimate_loss(model, data, batch_size, context_length, eval_iters, device):
         X, Y = dataloader(data, batch_size, context_length, device)
         logits = model(X)
         # Flatten for cross_entropy_loss
+        # assume idx = token id for Y
         loss = cross_entropy_loss(logits.view(-1, logits.size(-1)), Y.view(-1))
         losses[k] = loss.item()
     model.train()
@@ -134,6 +156,8 @@ def estimate_loss(model, data, batch_size, context_length, eval_iters, device):
 
 def train():
     args = get_args()
+    logger.info(f"Setting random seed as {args.seed}")
+    set_seed(args.seed)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")
@@ -141,14 +165,14 @@ def train():
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize WandB
-    if args.wandb_project:
+    if args.wandb_entity:
         try:
             import wandb
 
-            wandb.init(project=args.wandb_project, config=args)
+            wandb.init(entity=args.wandb_entity, project=args.name, config=args)
         except ImportError:
             logger.warning("wandb not installed, skipping logging to wandb")
-            args.wandb_project = None
+            args.wandb_entity = None
 
     # Load data
     # Assuming data is stored as uint16 (common for vocab size < 65536)
@@ -185,9 +209,9 @@ def train():
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     start_iter = 0
-    if args.resume_from:
-        logger.info(f"Resuming from {args.resume_from}")
-        start_iter = load_checkpoint(args.resume_from, model, optimizer)
+    if args.resume:
+        start_iter = load_checkpoint(args.resume, model, optimizer)
+        logger.info(f"Resuming from {args.resume}, starting at iteration {start_iter}")
 
     # Training loop
     t0 = time.time()
@@ -221,14 +245,14 @@ def train():
             dt = t1 - t0
             t0 = t1
             logger.info(f"Iter {iter_num}: loss {loss.item():.4f}, time {dt * 1000:.2f}ms, lr {lr:.2e}")
-            if args.wandb_project:
+            if args.wandb_entity:
                 wandb.log({"train/loss": loss.item(), "train/lr": lr, "iter": iter_num})
 
         # Evaluation
         if iter_num > 0 and iter_num % args.eval_interval == 0:
             val_loss = estimate_loss(model, valid_data, args.batch_size, args.context_length, args.eval_iters, device)
             logger.info(f"Iter {iter_num}: val loss {val_loss:.4f}")
-            if args.wandb_project:
+            if args.wandb_entity:
                 wandb.log({"val/loss": val_loss, "iter": iter_num})
 
             # Save checkpoint
