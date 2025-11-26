@@ -1,9 +1,9 @@
 import math
 import torch
 from torch.nn import Module
-from torch.optim import Optimizer, lr_scheduler
+from torch.optim import Optimizer
 from jaxtyping import Float
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 
 class Linear(Module):
@@ -304,3 +304,37 @@ class AdamW(Optimizer):
                     # p.data.add_(p, alpha=-lr * wd)
                     p[:] = p - lr * wd * p
         return loss
+
+
+def lr_cosine_schedule(
+    it: int,
+    max_learning_rate: float,
+    min_learning_rate: float,
+    warmup_iters: int,
+    cosine_cycle_iters: int,
+):
+    if it < warmup_iters:
+        lr = it / warmup_iters * max_learning_rate
+    elif it <= cosine_cycle_iters and it >= warmup_iters:
+        lr = min_learning_rate + 0.5 * (
+            1 + math.cos((it - warmup_iters) / (cosine_cycle_iters - warmup_iters) * math.pi)
+        ) * (max_learning_rate - min_learning_rate)
+    else:
+        lr = min_learning_rate
+    return lr
+
+
+def gradient_clip(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: float = 1e-6) -> None:
+    # Calculate global L2 norm across all parameters
+    total_norm = 0.0
+    for p in parameters:
+        if p.grad is not None:
+            total_norm += (p.grad ** 2).sum()
+    total_norm = total_norm ** 0.5 # 2-norm
+    
+    # Scale all gradients if total norm exceeds max_l2_norm
+    if total_norm > max_l2_norm:
+        scale_factor = max_l2_norm / (total_norm + eps)
+        for p in parameters:
+            if p.grad is not None:
+                p.grad.mul_(scale_factor)

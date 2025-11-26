@@ -140,12 +140,40 @@ print(
 )
 
 
-
-
 # %%
 from cs336_basics.models import Transformer
-model = Transformer(vocab_size=vocab_size, d_model=d_model, num_heads=num_heads, d_ff=d_ff, num_layers=num_layers, rope_theta=1, context_length=100)
+
+model = Transformer(
+    vocab_size=vocab_size,
+    d_model=d_model,
+    num_heads=num_heads,
+    d_ff=d_ff,
+    num_layers=num_layers,
+    rope_theta=1,
+    context_length=100,
+)
 num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total params: {num_params}")
 assert num_params == sum(num_parameters.values())
+
+
 # %%
+def get_peak_memory(
+    batch_size,
+    vocab_size,
+    context_length,
+    num_layers,
+    d_model,
+    num_heads,
+    d_ff=None,
+    dtype_bytes=4, # float32
+):
+    dff = 4 * d_model if d_ff is None else d_ff
+    token_embeddings = vocab_size * d_model
+    # RMSNorm->MultiHeadAttention->RMSNorm->SwiGluFeedForward
+    transformer_layers = num_layers * (d_model + 4 * d_model * d_model + d_model + 3 * d_model * dff)
+    ln_norm = d_model
+    lm_head = d_model * vocab_size
+
+    model_params = token_embeddings + transformer_layers + ln_norm + lm_head
+    adamw_params = model_params * 2  # m + v
