@@ -30,7 +30,7 @@ def pre_tokenization(
     special_tokens: list[str],
 ) -> dict[tuple[bytes], int]:
     with open(path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, doc_end_key)
+        boundaries = find_chunk_boundaries(f, num_processes, doc_end_key.encode("utf-8"))
     split_pattern = re.compile(b"|".join(re.escape(t.encode("utf-8")) for t in special_tokens))
 
     tasks = [(path, start, end, split_pattern) for start, end in zip(boundaries[:-1], boundaries[1:])]
