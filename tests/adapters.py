@@ -668,27 +668,8 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    from cs336_basics.bpe import pre_tokenization, get_pairs_count, merge_pair
+    from cs336_basics.bpe import train_bpe
 
-    assert vocab_size >= 256 + len(special_tokens), "vocab_size must be greater than 256+len(special_tokens)"
-    vocab = {i: bytes([i]) for i in range(256)}
-    merges = []
-    for i, tok in enumerate(special_tokens):
-        vocab[256 + i] = tok.encode("utf-8")
-    words_count = pre_tokenization(
-        path=input_path,
-        num_processes=16,
-        split_key=b"<|endoftext|>",
-        special_tokens=special_tokens,
+    return train_bpe(
+        input_path=input_path, vocab_size=vocab_size, special_tokens=special_tokens, num_processes=1, **kwargs
     )
-    while len(vocab) < vocab_size:
-        # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
-        pairs_count = get_pairs_count(words_count)
-        best_pair = max(
-            pairs_count.items(),
-            key=lambda item: (item[1], item[0]),  # (count, pair)
-        )[0]
-        words_count = merge_pair(words_count, best_pair)
-        merges.append(best_pair)
-        vocab[len(vocab)] = best_pair[0] + best_pair[1]
-    return vocab, merges

@@ -2,6 +2,7 @@ from cs336_basics.pretokenization_example import find_chunk_boundaries
 from multiprocessing import Pool
 from collections import Counter
 import regex as re
+import os
 
 
 PAT_GPT = re.compile(rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
@@ -25,11 +26,11 @@ def _process_get_words_count(args) -> dict[tuple[bytes], int]:
 def pre_tokenization(
     path: str,
     num_processes: int,
-    split_key: bytes,
+    doc_end_key: str,
     special_tokens: list[str],
 ) -> dict[tuple[bytes], int]:
     with open(path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, split_key)
+        boundaries = find_chunk_boundaries(f, num_processes, doc_end_key)
     split_pattern = re.compile(b"|".join(re.escape(t.encode("utf-8")) for t in special_tokens))
 
     tasks = [(path, start, end, split_pattern) for start, end in zip(boundaries[:-1], boundaries[1:])]
@@ -77,6 +78,37 @@ def merge_pair(words: dict[tuple[bytes, ...], int], merge: tuple[bytes, bytes]):
     return merged_words
 
 
+def train_bpe(
+    input_path: str | os.PathLike,
+    vocab_size: int,
+    special_tokens: list[str],
+    doc_end_key: str = "<|endoftext|>",
+    num_processes: int = 16,
+) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    assert vocab_size >= 256 + len(special_tokens), "vocab_size must be greater than 256+len(special_tokens)"
+    vocab = {i: bytes([i]) for i in range(256)}
+    merges = []
+    words_count = pre_tokenization(
+        path=input_path,
+        num_processes=num_processes,
+        doc_end_key=doc_end_key,
+        special_tokens=special_tokens,
+    )
+    while len(vocab) < vocab_size - len(special_tokens):
+        # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
+        pairs_count = get_pairs_count(words_count)
+        best_pair = max(
+            pairs_count.items(),
+            key=lambda item: (item[1], item[0]),  # (count, pair)
+        )[0]
+        words_count = merge_pair(words_count, best_pair)
+        merges.append(best_pair)
+        vocab[len(vocab)] = best_pair[0] + best_pair[1]
+    for tok in special_tokens:
+        vocab[len(vocab)] = tok.encode("utf-8")
+    return vocab, merges
+
+
 def test():
     from pathlib import Path
 
@@ -85,7 +117,7 @@ def test():
         # "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/corpus.en",
         "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt",
         24,
-        b"<|endoftext|>",
+        "<|endoftext|>",
         ["<|endoftext|>"],
     )
     merges = []
@@ -103,9 +135,7 @@ def test():
 
 
 def main():
-    from tests.adapters import run_train_bpe
-
-    run_train_bpe(
+    train_bpe(
         input_path="/home/yongce/aws/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt",
         vocab_size=10000,
         special_tokens=["<|endoftext|>"],
