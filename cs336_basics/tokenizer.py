@@ -1,6 +1,9 @@
 from collections.abc import Iterable, Iterator
+from multiprocessing import Pool
 import regex as re
 import yaml
+import pickle as pkl
+import numpy as np
 
 
 class Tokenizer:
@@ -107,10 +110,49 @@ class Tokenizer:
         return vocab
 
 
+def _process_tokenize(args):
+    toker, path, start, end, split_pattern = args
+    with open(path, "rb") as f:
+        f.seek(start)
+        chunck = f.read(end - start)
+    docs = re.split(split_pattern, chunck)
+    token_ids = []
+    for doc in docs:
+        token_ids.extend(toker.encode(doc.decode("utf-8", errors="ignore")))
+
+    return token_ids
+
+
+def main(
+    filepath: str,
+    vocab_merges_filepath: str,
+    doc_end_key: str = "<|endoftext|>",
+    special_tokens: list[str] | None = None,
+    num_processes: int = 16,
+):
+    from cs336_basics.pretokenization_example import find_chunk_boundaries
+
+    with open(vocab_merges_filepath, "rb") as f:
+        vocab_merges = pkl.load(f)
+    toker = Tokenizer(vocab=vocab_merges["vocab"], merges=vocab_merges["merges"], special_tokens=special_tokens)
+
+    # tokenize all file and store tokens
+    with open(filepath, "rb") as f:
+        boundaries = find_chunk_boundaries(f, num_processes, doc_end_key.encode("utf-8"))
+    split_pattern = re.compile(b"|".join(re.escape(t.encode("utf-8")) for t in special_tokens))
+    tasks = [(toker, filepath, start, end, split_pattern) for (start, end) in zip(boundaries[:-1], boundaries[1:])]
+    with Pool(processes=num_processes) as pool:
+        results = pool.map(_process_tokenize, tasks)
+    token_ids = []
+    for res in results:
+        token_ids.extend(res)
+    return token_ids
+
+
 if __name__ == "__main__":
     toker = Tokenizer.from_files(
-        vocab_filepath="/home/yongce/aws/cs336/assignment1-basics/tests/fixtures/gpt2_vocab.json",
-        merges_filepath="/home/yongce/aws/cs336/assignment1-basics/tests/fixtures/gpt2_merges.txt",
+        vocab_filepath="./tests/fixtures/gpt2_vocab.json",
+        merges_filepath="./tests/fixtures/gpt2_merges.txt",
         special_tokens=["<|endoftext|>", "<|endoftext|><|endoftext|>"],
     )
     prompt = "I love you."
@@ -124,3 +166,16 @@ if __name__ == "__main__":
     tokenized_string = [toker.decode([x]) for x in tok_ids]
     print(f"tokenized_string: {tokenized_string}")
     assert decode_str == prompt
+
+    #####################
+    token_ids = main(
+        filepath="/home/yongce/Desktop/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt",
+        vocab_merges_filepath="/home/yongce/Desktop/cs336/assignment1-basics/data/BPE-TinyStoriesV2-GPT4-train.pkl",
+        doc_end_key="<|endoftext|>",
+        special_tokens=["<|endoftext|>"],
+        num_processes=19,
+    )
+
+    arr = np.array(token_ids, dtype=np.uint16)
+    print(f"Total tokens: {len(arr)}")
+    np.save("/home/yongce/Desktop/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train-tokens.npy", arr)
