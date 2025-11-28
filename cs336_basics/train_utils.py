@@ -74,6 +74,55 @@ def load_checkpoint(
     return ckpt["iteration"]
 
 
+def inference(
+    model: torch.nn.Module,
+    input_ids: torch.Tensor,
+    max_new_tokens: int,
+    end_token_id: int | None = None,
+    temperature: float = 1.0,
+    min_p: float = 0.0,
+    eps: float = 1e-8,
+    device: str | torch.device = "cpu",
+) -> torch.Tensor:
+    input_ids = input_ids.to(device)
+    if len(input_ids.shape) == 1:
+        input_ids = input_ids.unsqueeze(0)  # (1, seq_len)
+    assert len(input_ids.shape) == 2, "input_ids should be of shape (B, seq_len)"
+    is_finished = torch.zeros((input_ids.shape[0],), dtype=torch.bool, device=input_ids.device)
+    output_ids = torch.zeros((input_ids.shape[0], max_new_tokens), dtype=input_ids.dtype, device=input_ids.device)
+    model.eval()
+    for idx in range(max_new_tokens):
+        # Get the logits of the next token
+        logits = model(input_ids)  # (B, seq_len, vocab_size)
+        #################################################################
+        # temperature scaling
+        logits = logits[:, -1, :] / (temperature + eps)  # (B, vocab_size)
+        # softmax to get probabilities
+        probs = torch.softmax(logits, dim=-1)  # (B, vocab_size)
+        # nucleus sampling
+        sorted_probs, sorted_indices = torch.sort(probs, descending=True, dim=-1)
+        cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+        indices_to_remove = sorted_indices[cumulative_probs < min_p] if sorted_probs[0] > min_p else sorted_indices[1:]
+        probs = probs.masked_fill(indices_to_remove, 0.0)
+        # Renormalize the probabilities
+        probs = probs / (probs.sum(dim=-1, keepdim=True) + eps)
+        # Sample the next token
+        next_token = torch.multinomial(probs, num_samples=1)  # (B, 1) # assume the index is equal to token id
+        ###############################################################
+        if end_token_id is not None:
+            is_finished = is_finished | (next_token.squeeze(-1) == end_token_id)
+            # Append the next token only for unfinished sequences
+            next_token = next_token.masked_fill(is_finished.unsqueeze(-1), end_token_id)
+        # Append the next token to the input_ids
+        input_ids = torch.cat([input_ids, next_token], dim=-1)  # (B, seq_len++)
+        output_ids[:, idx] = next_token.squeeze(-1)
+        if is_finished.all():
+            break
+
+    model.train()
+    return output_ids
+
+
 class TrainingArgs(argparse.Namespace):
     name: str
     train_path: str
