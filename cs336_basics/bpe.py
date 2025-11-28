@@ -110,31 +110,6 @@ def train_bpe(
 
 
 def test():
-    from pathlib import Path
-
-    words_count = pre_tokenization(
-        # Path(__file__).parent / "../data/TinyStoriesV2-GPT4-train.txt",
-        # "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/corpus.en",
-        "/home/unitree/Desktop/DRL/cs336/assignment1-basics/tests/fixtures/tinystories_sample_5M.txt",
-        24,
-        "<|endoftext|>",
-        ["<|endoftext|>"],
-    )
-    merges = []
-    vocab = {}
-    for i in range(500):
-        # best_pair = get_pairs_count(words_count).most_common(1)[0][0]
-        pairs_count = get_pairs_count(words_count)
-        best_pair = max(
-            pairs_count.items(),
-            key=lambda item: (item[1], item[0]),  # (count, pair)
-        )[0]
-        words_count = merge_pair(words_count, best_pair)
-        merges.append(best_pair)
-        vocab[len(vocab)] = best_pair[0] + best_pair[1]
-
-
-def main():
     train_bpe(
         input_path="/home/yongce/aws/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt",
         vocab_size=10000,
@@ -144,6 +119,18 @@ def main():
 
 if __name__ == "__main__":
     import cProfile
+    import pickle as pkl
 
     # cProfile.run("test()")
-    main()
+    vocab, merges = train_bpe(
+        input_path="/home/yongce/Desktop/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt",
+        vocab_size=10000,
+        doc_end_key="<|endoftext|>",
+        special_tokens=["<|endoftext|>"],
+        num_processes=18,
+    )
+
+    pkl.dump(
+        {"vocab": vocab, "merges": merges},
+        open("/home/yongce/Desktop/cs336/assignment1-basics/data/BPE-TinyStoriesV2-GPT4-train.pkl", "wb"),
+    )
