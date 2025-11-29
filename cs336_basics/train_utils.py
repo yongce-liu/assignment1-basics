@@ -145,6 +145,8 @@ class TrainingArgs(argparse.Namespace):
     seed: int
     batch_size: int
     learning_rate: float
+    max_lr: float
+    min_lr: float
     adamw_betas: tuple[float, float]
     max_iters: int
     warmup_iters: int
@@ -189,9 +191,11 @@ def get_args() -> TrainingArgs:
     # Training arguments
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--learning_rate", type=float, default=5e-4, help="Max learning rate")
+    parser.add_argument("--learning_rate", type=float, default=5e-4, help="Learning rate")
+    parser.add_argument("--max_lr", type=float, default=5e-4, help="Maximum learning rate for cosine schedule")
+    parser.add_argument("--min_lr", type=float, default=5e-5, help="Minimum learning rate for cosine schedule")
     parser.add_argument("--adamw_wd", type=float, default=0.1, help="Weight decay")
-    parser.add_argument("--adamw_betas", type=float, nargs=2, default=(0.9, 0.95), help="AdamW betas")
+    parser.add_argument("--adamw_betas", type=float, nargs=2, default=(0.9, 0.999), help="AdamW betas")
     parser.add_argument("--max_iters", type=int, default=5000, help="Total training iterations")
     parser.add_argument("--warmup_iters", type=int, default=100, help="Warmup iterations")
     parser.add_argument("--cosine_cycle_iters", type=int, default=5000, help="Cosine cycle iterations")
@@ -297,7 +301,11 @@ def train(args: TrainingArgs | None = None, logger: logging.Logger | None = None
     for iter_num in range(start_iter, args.max_iters):
         # Determine learning rate
         lr = lr_cosine_schedule(
-            iter_num, args.learning_rate, args.learning_rate * 0.1, args.warmup_iters, args.cosine_cycle_iters
+            it=iter_num,
+            max_learning_rate=args.max_lr,
+            min_learning_rate=args.min_lr,
+            warmup_iters=args.warmup_iters,
+            cosine_cycle_iters=args.cosine_cycle_iters,
         )
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
