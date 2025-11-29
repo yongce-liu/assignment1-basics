@@ -44,7 +44,7 @@ def dataloader(
     # Numpy implements this through
     # np.memmap (or the flag mmap_mode='r' to np.load, if you originally saved the array with np.save), which
     # will return a numpy array-like object that loads the entries on-demand as you access them.
-    x = torch.from_numpy(x)
+    x = torch.from_numpy(np.array(x))
 
     # Maximum valid starting index (need context_length + 1 tokens for input and target)
     max_start_idx = len(x) - context_length

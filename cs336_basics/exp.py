@@ -7,8 +7,8 @@ from cs336_basics.train_utils import PROJECT_ROOT, TrainingArgs, train
 if __name__ == "__main__":
     params = dict(
         name="tiny-stories",
-        # train_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-train-tokens.npy",
-        train_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-valid-tokens.npy",
+        train_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-train-tokens.npy",
+        # train_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-valid-tokens.npy",
         valid_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-valid-tokens.npy",
         vocab_size=10000,
         context_length=256,
