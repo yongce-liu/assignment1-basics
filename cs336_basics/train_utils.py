@@ -252,7 +252,7 @@ def train(args: TrainingArgs | None = None, logger: logging.Logger | None = None
         try:
             import wandb
 
-            wandb.init(entity=args.wandb_entity, project=args.name, config=args)
+            wandb.init(entity=args.wandb_entity, project=args.name, name=time.strftime("%Y%m%d-%H%M%S"), config=args)
         except ImportError:
             logger.warning("wandb not installed, skipping logging to wandb")
             args.wandb_entity = None
