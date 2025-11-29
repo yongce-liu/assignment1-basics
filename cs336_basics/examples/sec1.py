@@ -43,7 +43,7 @@ def decode_utf8_bytes_to_str_wrong(bytestring: bytes):
 
 print(decode_utf8_bytes_to_str_wrong(b"hello"))
 try:
-    print(decode_utf8_bytes_to_str_wrong("牛".encode("utf-8")))
+    print(decode_utf8_bytes_to_str_wrong("牛".encode()))
     print(b"\xc0\x80".decode("utf-8"))
 except Exception as e:
     print(e)

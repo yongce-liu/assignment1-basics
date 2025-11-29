@@ -1,9 +1,10 @@
+import pickle as pkl
 from collections.abc import Iterable, Iterator
 from multiprocessing import Pool
+
+import numpy as np
 import regex as re
 import yaml
-import pickle as pkl
-import numpy as np
 
 
 class Tokenizer:
@@ -169,8 +170,8 @@ if __name__ == "__main__":
 
     #####################
     token_ids = main(
-        filepath="/home/yongce/Desktop/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt",
-        vocab_merges_filepath="/home/yongce/Desktop/cs336/assignment1-basics/data/BPE-TinyStoriesV2-GPT4-train.pkl",
+        filepath="/home/yongce/Desktop/cs336/assignment1-basics/data/src/TinyStoriesV2-GPT4-valid.txt",
+        vocab_merges_filepath="/home/yongce/Desktop/cs336/assignment1-basics/data/BPE-TinyStoriesV2-GPT4.pkl",
         doc_end_key="<|endoftext|>",
         special_tokens=["<|endoftext|>"],
         num_processes=19,
@@ -178,4 +179,4 @@ if __name__ == "__main__":
 
     arr = np.array(token_ids, dtype=np.uint16)
     print(f"Total tokens: {len(arr)}")
-    np.save("/home/yongce/Desktop/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train-tokens.npy", arr)
+    np.save("/home/yongce/Desktop/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-valid-tokens.npy", arr)

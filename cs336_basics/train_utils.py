@@ -1,25 +1,31 @@
-import torch
-import numpy as np
-import os
-import typing
-import pickle as pkl
 import argparse
 import logging
+import os
+import pickle as pkl
 import time
+import typing
+from pathlib import Path
+
+import numpy as np
+import torch
+
 from cs336_basics.models import (
-    Transformer,
     AdamW,
-    lr_cosine_schedule,
-    gradient_clip,
+    Transformer,
     cross_entropy_loss,
+    gradient_clip,
+    lr_cosine_schedule,
 )
+
+PROJECT_ROOT: str = str(Path(__file__).parent.parent)
 
 
 def set_seed(seed):
-    import torch
-    import numpy as np
-    import random
     import os
+    import random
+
+    import numpy as np
+    import torch
 
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -136,11 +142,12 @@ class TrainingArgs(argparse.Namespace):
     rope_theta: float
     seed: int
     batch_size: int
-    lr: float
+    learning_rate: float
+    adamw_betas: tuple[float, float]
     max_iters: int
     warmup_iters: int
     cosine_cycle_iters: int
-    weight_decay: float
+    adamw_wd: float
     grad_clip: float
     output_dir: str
     log_interval: int
@@ -153,32 +160,48 @@ class TrainingArgs(argparse.Namespace):
 def get_args() -> TrainingArgs:
     parser = argparse.ArgumentParser(description="Train a Transformer model")
 
-    parser.add_argument("--name", type=str, required=True, help="project name")
+    parser.add_argument("--name", type=str, default="tiny-stories", help="project name")
     # Data arguments
-    parser.add_argument("--train_path", type=str, required=True, help="Path to training data (numpy memmap)")
-    parser.add_argument("--valid_path", type=str, required=True, help="Path to validation data (numpy memmap)")
-    parser.add_argument("--vocab_size", type=int, required=True, help="Vocabulary size")
+    parser.add_argument(
+        "--train_path",
+        type=str,
+        default=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-train-tokens.npy",
+        help="Path to training data (numpy memmap)",
+    )
+    parser.add_argument(
+        "--valid_path",
+        type=str,
+        default=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-valid-tokens.npy",
+        help="Path to validation data (numpy memmap)",
+    )
+    parser.add_argument("--vocab_size", type=int, default=10000, help="Vocabulary size")
     parser.add_argument("--context_length", type=int, default=256, help="Context length")
 
     # Model arguments
     parser.add_argument("--d_model", type=int, default=512, help="Model dimension")
-    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
-    parser.add_argument("--d_ff", type=int, default=2048, help="Feedforward dimension")
-    parser.add_argument("--num_layers", type=int, default=6, help="Number of layers")
+    parser.add_argument("--num_heads", type=int, default=4, help="Number of attention heads")
+    parser.add_argument("--d_ff", type=int, default=1344, help="Feedforward dimension")
+    parser.add_argument("--num_layers", type=int, default=4, help="Number of layers")
     parser.add_argument("--rope_theta", type=float, default=10000.0, help="RoPE theta")
 
     # Training arguments
-    parser.add_argument("--seed", type=int, default=0, help="Batch size")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
-    parser.add_argument("--lr", type=float, default=6e-4, help="Max learning rate")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--learning_rate", type=float, default=5e-4, help="Max learning rate")
+    parser.add_argument("--adamw_wd", type=float, default=0.1, help="Weight decay")
+    parser.add_argument("--adamw_betas", type=float, nargs=2, default=(0.9, 0.95), help="AdamW betas")
     parser.add_argument("--max_iters", type=int, default=5000, help="Total training iterations")
     parser.add_argument("--warmup_iters", type=int, default=100, help="Warmup iterations")
     parser.add_argument("--cosine_cycle_iters", type=int, default=5000, help="Cosine cycle iterations")
-    parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")
     parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")
 
     # Checkpointing and Logging
-    parser.add_argument("--output_dir", type=str, default="checkpoints", help="Directory to save checkpoints")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=PROJECT_ROOT + "/outputs/tiny-stories",
+        help="Directory to save checkpoints",
+    )
     parser.add_argument("--log_interval", type=int, default=10, help="Log interval")
     parser.add_argument("--eval_interval", type=int, default=500, help="Evaluation interval")
     parser.add_argument("--eval_iters", type=int, default=200, help="Number of iterations for evaluation")
@@ -255,7 +278,7 @@ def train():
     logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
 
     # Initialize optimizer
-    optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = AdamW(model.parameters(), lr=args.learning_rate, betas=args.adamw_betas, weight_decay=args.adamw_wd)
 
     start_iter = 0
     if args.resume:
@@ -266,7 +289,9 @@ def train():
     t0 = time.time()
     for iter_num in range(start_iter, args.max_iters):
         # Determine learning rate
-        lr = lr_cosine_schedule(iter_num, args.lr, args.lr * 0.1, args.warmup_iters, args.cosine_cycle_iters)
+        lr = lr_cosine_schedule(
+            iter_num, args.learning_rate, args.learning_rate * 0.1, args.warmup_iters, args.cosine_cycle_iters
+        )
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 
@@ -323,3 +348,4 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(__name__)
     train()
+    import numpy as np

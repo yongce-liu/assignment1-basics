@@ -1,9 +1,10 @@
 import math
+from collections.abc import Callable, Iterable
+
 import torch
+from jaxtyping import Float
 from torch.nn import Module
 from torch.optim import Optimizer
-from jaxtyping import Float
-from collections.abc import Callable, Iterable
 
 
 class Linear(Module):
@@ -329,9 +330,9 @@ def gradient_clip(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float, 
     total_norm = 0.0
     for p in parameters:
         if p.grad is not None:
-            total_norm += (p.grad ** 2).sum()
-    total_norm = total_norm ** 0.5 # 2-norm
-    
+            total_norm += (p.grad**2).sum()
+    total_norm = total_norm**0.5  # 2-norm
+
     # Scale all gradients if total norm exceeds max_l2_norm
     if total_norm > max_l2_norm:
         scale_factor = max_l2_norm / (total_norm + eps)

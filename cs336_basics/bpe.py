@@ -1,9 +1,10 @@
-from cs336_basics.pretokenization_example import find_chunk_boundaries
-from multiprocessing import Pool
-from collections import Counter
-import regex as re
 import os
+from collections import Counter
+from multiprocessing import Pool
 
+import regex as re
+
+from cs336_basics.pretokenization_example import find_chunk_boundaries
 
 PAT_GPT = re.compile(rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
 
@@ -118,10 +119,10 @@ def test():
 
 
 if __name__ == "__main__":
-    import cProfile
     import pickle as pkl
 
     # cProfile.run("test()")
+
     vocab, merges = train_bpe(
         input_path="/home/yongce/Desktop/cs336/assignment1-basics/data/TinyStoriesV2-GPT4-train.txt",
         vocab_size=10000,
@@ -132,5 +133,5 @@ if __name__ == "__main__":
 
     pkl.dump(
         {"vocab": vocab, "merges": merges},
-        open("/home/yongce/Desktop/cs336/assignment1-basics/data/BPE-TinyStoriesV2-GPT4-train.pkl", "wb"),
+        open("/home/yongce/Desktop/cs336/assignment1-basics/data/BPE-TinyStoriesV2-GPT4.pkl", "wb"),
     )
