@@ -1,5 +1,6 @@
-import logging
 from pprint import pprint
+
+import colorlog
 
 from cs336_basics.train_utils import PROJECT_ROOT, TrainingArgs, train
 
@@ -33,8 +34,23 @@ if __name__ == "__main__":
         resume=None,
     )
     args = TrainingArgs(**params)
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(args.name)
+
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(
+        colorlog.ColoredFormatter(
+            "%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(name)s%(reset)s %(message)s",
+            log_colors={
+                "DEBUG": "cyan",
+                "INFO": "green",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "red,bg_white",
+            },
+        )
+    )
+    logger = colorlog.getLogger(args.name)
+    logger.addHandler(handler)
+    logger.setLevel(20)
 
     logger.info("Training with the following parameters:")
     pprint(params, indent=2, width=80, sort_dicts=False)

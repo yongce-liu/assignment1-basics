@@ -38,7 +38,9 @@ def set_seed(seed):
         torch.backends.cudnn.benchmark = False
 
 
-def dataloader(x: np.ndarray, batch_size: int, context_length: int, device: str = "cpu"):
+def dataloader(
+    x: np.ndarray, batch_size: int, context_length: int, device: str = "cpu", dtype: torch.dtype = torch.long
+) -> tuple[torch.Tensor, torch.Tensor]:
     # Numpy implements this through
     # np.memmap (or the flag mmap_mode='r' to np.load, if you originally saved the array with np.save), which
     # will return a numpy array-like object that loads the entries on-demand as you access them.
@@ -51,10 +53,10 @@ def dataloader(x: np.ndarray, batch_size: int, context_length: int, device: str 
     start_indices = torch.randint(0, max_start_idx, (batch_size,))
 
     # Create batch by gathering sequences starting at each sampled index
-    inputs = torch.stack([x[i : i + context_length] for i in start_indices])
-    targets = torch.stack([x[i + 1 : i + context_length + 1] for i in start_indices])
+    inputs = torch.stack([x[i : i + context_length] for i in start_indices]).to(dtype=dtype, device=device)
+    targets = torch.stack([x[i + 1 : i + context_length + 1] for i in start_indices]).to(dtype=dtype, device=device)
 
-    return inputs.to(device), targets.to(device)
+    return inputs, targets
 
 
 def save_checkpoint(
