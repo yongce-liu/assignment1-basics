@@ -1,14 +1,13 @@
-from pathlib import Path
+import logging
 from pprint import pprint
 
-from .train_utils import TrainingArgs
-
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+from cs336_basics.train_utils import PROJECT_ROOT, TrainingArgs, train
 
 if __name__ == "__main__":
     params = dict(
         name="tiny-stories",
-        train_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-train-tokens.npy",
+        # train_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-train-tokens.npy",
+        train_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-valid-tokens.npy",
         valid_path=PROJECT_ROOT + "/data/TinyStoriesV2-GPT4-valid-tokens.npy",
         vocab_size=10000,
         context_length=256,
@@ -34,5 +33,12 @@ if __name__ == "__main__":
         resume=None,
     )
     args = TrainingArgs(**params)
-    print("Training with the following parameters:")
-    pprint(params, indent=2, width=80)
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(args.name)
+
+    logger.info("Training with the following parameters:")
+    pprint(params, indent=2, width=80, sort_dicts=False)
+
+    logger.info("Starting training...")
+    train(args=args, logger=logger)
+    logger.info("Training completed.")

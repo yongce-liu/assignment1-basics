@@ -226,8 +226,13 @@ def estimate_loss(model, data, batch_size, context_length, eval_iters, device):
     return losses.mean()
 
 
-def train():
-    args = get_args()
+def train(args: TrainingArgs | None = None, logger: logging.Logger | None = None):
+    args = get_args() if args is None else args
+    if logger is None:
+        # Configure logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(args.name)
+
     logger.info(f"Setting random seed as {args.seed}")
     set_seed(args.seed)
 
@@ -340,12 +345,4 @@ def train():
 
 
 if __name__ == "__main__":
-    # Configure logging
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        level=logging.INFO,
-    )
-    logger = logging.getLogger(__name__)
-    train()
-    import numpy as np
+    train(logger)
